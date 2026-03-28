@@ -14,6 +14,7 @@ import '../../../../../utils/extensions/custom_extensions.dart';
 import '../../../../../widgets/server_image.dart';
 import '../../../domain/chapter/chapter_model.dart';
 import '../../../widgets/download_status_icon.dart';
+import '../../../widgets/offline_cache_status_icon.dart';
 
 class ChapterMangaListTile extends StatelessWidget {
   const ChapterMangaListTile({
@@ -67,11 +68,17 @@ class ChapterMangaListTile extends StatelessWidget {
             : null,
         subtitle:
             Text(chapterWithMangaDto.name, style: TextStyle(color: color)),
-        trailing: DownloadStatusIcon(
-          isDownloaded: (chapterWithMangaDto.isDownloaded).ifNull(),
-          mangaId: chapterWithMangaDto.manga.id,
-          chapter: chapterWithMangaDto,
-          updateData: updatePair,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            OfflineCacheStatusIcon(chapterId: chapterWithMangaDto.id),
+            DownloadStatusIcon(
+              isDownloaded: (chapterWithMangaDto.isDownloaded).ifNull(),
+              mangaId: chapterWithMangaDto.manga.id,
+              chapter: chapterWithMangaDto,
+              updateData: updatePair,
+            ),
+          ],
         ),
         selectedColor: context.theme.colorScheme.onSurface,
         selectedTileColor:
