@@ -9,6 +9,8 @@ import '../../../../../../../utils/misc/toast/toast.dart';
 import '../../../../../../../widgets/async_buttons/async_elevated_button.dart';
 import '../../../../../../../widgets/popup_widgets/pop_button.dart';
 import '../../../../server/widget/client/server_port_tile/server_port_tile.dart';
+import '../../../../server/widget/client/server_tunnel_tile.dart';
+import '../../../../server/widget/client/server_tunnel_url_tile.dart';
 import '../../../../server/widget/client/server_url_tile/server_url_tile.dart';
 import '../../../data/backup_settings_repository.dart';
 
@@ -63,6 +65,8 @@ class CreateBackupDialog extends HookConsumerWidget {
                     baseUrl: ref.read(serverUrlProvider),
                     port: ref.read(serverPortProvider),
                     addPort: ref.watch(serverPortToggleProvider).ifNull(),
+                    isTunnel: ref.watch(serverTunnelToggleProvider).ifNull(),
+                    tunnelUrl: ref.read(serverTunnelUrlProvider),
                     appendApiToUrl: false,
                   ) +
                   backupUrl.value!,

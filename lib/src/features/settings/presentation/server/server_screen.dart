@@ -16,6 +16,8 @@ import '../../controller/server_controller.dart';
 import 'widget/authentication/authentication_section.dart';
 import 'widget/client/client_section.dart';
 import 'widget/client/server_port_tile/server_port_tile.dart';
+import 'widget/client/server_tunnel_tile.dart';
+import 'widget/client/server_tunnel_url_tile.dart';
 import 'widget/client/server_url_tile/server_url_tile.dart';
 import 'widget/cloud_flare/cloud_flare_section.dart';
 import 'widget/misc_settings/misc_settings_section.dart';
@@ -52,6 +54,8 @@ class ServerScreen extends ConsumerWidget {
                       baseUrl: ref.read(serverUrlProvider),
                       port: ref.read(serverPortProvider),
                       addPort: ref.watch(serverPortToggleProvider).ifNull(),
+                      isTunnel: ref.watch(serverTunnelToggleProvider).ifNull(),
+                      tunnelUrl: ref.read(serverTunnelUrlProvider),
                       appendApiToUrl: false,
                     );
                     if (url.isNotBlank) {

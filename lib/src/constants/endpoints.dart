@@ -16,14 +16,21 @@ abstract class Endpoints {
     bool appendApiToUrl = true,
     bool isGraphQl = false,
     bool isWebsocket = false,
+    bool isTunnel = false,
+    String? tunnelUrl,
   }) {
     String primary = baseUrl ?? DBKeys.serverUrl.initial;
+
+    if (isTunnel && tunnelUrl != null && tunnelUrl.isNotEmpty) {
+      primary = tunnelUrl;
+    }
+
     if (isWebsocket) {
       primary = primary.toWebSocket!;
     }
-    Uri url = Uri.tryParse(primary) ?? Uri.parse(DBKeys.serverUrl.initial);
+    Uri url = Uri.tryParse(primary) ?? Uri.parse(isTunnel && tunnelUrl != null && tunnelUrl.isNotEmpty ? tunnelUrl : DBKeys.serverUrl.initial);
 
-    if (port != null && addPort) {
+    if (port != null && addPort && !isTunnel) {
       url = url.replace(port: port);
     }
     if (appendApiToUrl) {
