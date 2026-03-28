@@ -15,7 +15,7 @@ class AppLockToggleTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (!Platform.isAndroid) return const SizedBox.shrink();
 
-    final isLocked = ref.watch(appLockToggleProvider).ifNull();
+    final isLocked = ref.watch(appLockToggleProvider) ?? false;
     return SettingsPropTile(
       title: 'App Lock (Fingerprint/Biometric)',
       leading: const Icon(Icons.fingerprint_rounded),
@@ -23,7 +23,7 @@ class AppLockToggleTile extends ConsumerWidget {
         value: isLocked,
         onChanged: ref.read(appLockToggleProvider.notifier).update,
       ),
-      type: SettingsPropType<void>.switchToggle(),
+      type: const SettingsPropType<void>.switchTile(),
     );
   }
 }

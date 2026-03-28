@@ -48,12 +48,12 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> with WidgetsBindi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      final isLocked = ref.read(appLockToggleProvider).ifNull();
+      final isLocked = ref.read(appLockToggleProvider) ?? false;
       if (Platform.isAndroid && isLocked && !_isAuthenticated && !_isAuthenticating) {
         _checkAuth();
       }
     } else if (state == AppLifecycleState.paused) {
-      final isLocked = ref.read(appLockToggleProvider).ifNull();
+      final isLocked = ref.read(appLockToggleProvider) ?? false;
       if (Platform.isAndroid && isLocked) {
         setState(() {
           _isAuthenticated = false;
@@ -65,7 +65,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> with WidgetsBindi
   Future<void> _checkAuth() async {
     if (_isAuthenticating) return;
 
-    final isLocked = ref.read(appLockToggleProvider).ifNull();
+    final isLocked = ref.read(appLockToggleProvider) ?? false;
     if (!Platform.isAndroid || !isLocked) {
       setState(() {
         _isAuthenticated = true;
@@ -96,7 +96,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> with WidgetsBindi
     return Stack(
       children: [
         widget.child,
-        if (!_isAuthenticated && Platform.isAndroid && ref.watch(appLockToggleProvider).ifNull())
+        if (!_isAuthenticated && Platform.isAndroid && (ref.watch(appLockToggleProvider) ?? false))
           MaterialApp(
             debugShowCheckedModeBanner: false,
             home: Scaffold(

@@ -35,7 +35,7 @@ class ServerTunnelTile extends ConsumerWidget {
         value: tunnelToggle,
         onChanged: ref.read(serverTunnelToggleProvider.notifier).update,
       ),
-      type: SettingsPropType<void>.switchToggle(),
+      type: const SettingsPropType<void>.switchTile(),
     );
   }
 }
