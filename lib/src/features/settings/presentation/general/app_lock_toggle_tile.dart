@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../../utils/extensions/custom_extensions.dart';
-import '../../../../widgets/input_popup/domain/settings_prop_type.dart';
-import '../../../../widgets/input_popup/settings_prop_tile.dart';
 import '../../../security/presentation/app_lock_screen.dart';
 
 class AppLockToggleTile extends ConsumerWidget {
@@ -16,14 +14,12 @@ class AppLockToggleTile extends ConsumerWidget {
     if (!Platform.isAndroid) return const SizedBox.shrink();
 
     final isLocked = ref.watch(appLockToggleProvider) ?? false;
-    return SettingsPropTile(
-      title: 'App Lock (Fingerprint/Biometric)',
-      leading: const Icon(Icons.fingerprint_rounded),
-      trailing: Switch(
-        value: isLocked,
-        onChanged: ref.read(appLockToggleProvider.notifier).update,
-      ),
-      type: const SettingsPropType<void>.switchTile(),
+    return SwitchListTile(
+      controlAffinity: ListTileControlAffinity.trailing,
+      secondary: const Icon(Icons.fingerprint_rounded),
+      title: const Text('App Lock (Fingerprint/Biometric)'),
+      value: isLocked,
+      onChanged: ref.read(appLockToggleProvider.notifier).update,
     );
   }
 }

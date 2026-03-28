@@ -37,16 +37,15 @@ class ServerTunnelUrlTile extends ConsumerWidget {
       type: SettingsPropType<void>.textField(
         hintText: 'Enter Tunnel URL',
         value: tunnelUrl,
-        onChanged: tunnelToggle
-            ? (value) async {
-                final tempUrl = value.endsWith('/')
-                    ? value.substring(0, value.length - 1)
-                    : value;
-                ref.read(serverTunnelUrlProvider.notifier).update(tempUrl);
-                return;
-              }
-            : null,
+        onChanged: (value) async {
+          final tempUrl = value.endsWith('/')
+              ? value.substring(0, value.length - 1)
+              : value;
+          ref.read(serverTunnelUrlProvider.notifier).update(tempUrl);
+          return;
+        },
       ),
+      onTap: tunnelToggle ? null : () {},
     );
   }
 }

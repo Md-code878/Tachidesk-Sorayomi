@@ -6,8 +6,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../../../../../constants/db_keys.dart';
 import '../../../../../../utils/extensions/custom_extensions.dart';
 import '../../../../../../utils/mixin/shared_preferences_client_mixin.dart';
-import '../../../../../../widgets/input_popup/domain/settings_prop_type.dart';
-import '../../../../../../widgets/input_popup/settings_prop_tile.dart';
 
 part 'server_tunnel_tile.g.dart';
 
@@ -27,15 +25,13 @@ class ServerTunnelTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tunnelToggle = ref.watch(serverTunnelToggleProvider).ifNull();
-    return SettingsPropTile(
-      title: 'Use Tunnel URL',
-      subtitle: tunnelToggle ? 'Connect via Tunnel URL instead of Localhost' : null,
-      leading: const Icon(Icons.cloud_sync_rounded),
-      trailing: Switch(
-        value: tunnelToggle,
-        onChanged: ref.read(serverTunnelToggleProvider.notifier).update,
-      ),
-      type: const SettingsPropType<void>.switchTile(),
+    return SwitchListTile(
+      controlAffinity: ListTileControlAffinity.trailing,
+      secondary: const Icon(Icons.cloud_sync_rounded),
+      title: const Text('Use Tunnel URL'),
+      subtitle: tunnelToggle ? const Text('Connect via Tunnel URL instead of Localhost') : null,
+      value: tunnelToggle,
+      onChanged: ref.read(serverTunnelToggleProvider.notifier).update,
     );
   }
 }
