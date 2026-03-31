@@ -9,6 +9,9 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../data/manga_book/manga_book_repository.dart';
 import '../../../domain/chapter/chapter_model.dart';
+import 'dart:convert';
+import '../../../data/offline_cache/offline_cache_manager.dart';
+import '../../../../../global_providers/global_providers.dart';
 import '../../../domain/chapter_page/chapter_page_model.dart';
 
 part 'reader_controller.g.dart';
@@ -21,6 +24,22 @@ FutureOr<ChapterDto?> chapter(
     ref.watch(mangaBookRepositoryProvider).getChapter(chapterId: chapterId);
 
 @riverpod
-Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) => ref
-    .watch(mangaBookRepositoryProvider)
-    .getChapterPages(chapterId: chapterId);
+Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
+  final offlineCacheManager = ref.read(offlineCacheManagerProvider);
+  if (offlineCacheManager.isChapterCachedSync(chapterId)) {
+    final prefs = ref.read(sharedPreferencesProvider);
+    final jsonStr = prefs.getString('offline_chapter_pages_$chapterId');
+    if (jsonStr != null) {
+      try {
+        final jsonMap = jsonDecode(jsonStr);
+        return ChapterPagesDto.fromJson(jsonMap);
+      } catch (e) {
+        // Fallback to network request
+      }
+    }
+  }
+
+  return ref
+      .watch(mangaBookRepositoryProvider)
+      .getChapterPages(chapterId: chapterId);
+}
