@@ -16,6 +16,8 @@ import '../constants/endpoints.dart';
 import '../constants/enum.dart';
 import '../features/settings/presentation/general/timeout_settings/timeout_settings_section.dart';
 import '../features/settings/presentation/server/widget/client/server_port_tile/server_port_tile.dart';
+import '../features/settings/presentation/server/widget/client/server_tunnel_tile.dart';
+import '../features/settings/presentation/server/widget/client/server_tunnel_url_tile.dart';
 import '../features/settings/presentation/server/widget/client/server_url_tile/server_url_tile.dart';
 import '../features/settings/presentation/server/widget/credential_popup/credentials_popup.dart';
 import '../utils/extensions/custom_extensions.dart';
@@ -50,6 +52,8 @@ GraphQLClient graphQlClient(Ref ref) {
       baseUrl: ref.watch(serverUrlProvider) ?? DBKeys.serverUrl.initial,
       port: ref.watch(serverPortProvider),
       addPort: ref.watch(serverPortToggleProvider).ifNull(),
+      isTunnel: ref.watch(serverTunnelToggleProvider).ifNull(),
+      tunnelUrl: ref.watch(serverTunnelUrlProvider),
       isGraphQl: true,
     ),
     followRedirects: true,
@@ -89,6 +93,8 @@ GraphQLClient graphQlSubscriptionClient(Ref ref) {
         baseUrl: ref.watch(serverUrlProvider) ?? DBKeys.serverUrl.initial,
         port: ref.watch(serverPortProvider),
         addPort: ref.watch(serverPortToggleProvider).ifNull(),
+        isTunnel: ref.watch(serverTunnelToggleProvider).ifNull(),
+        tunnelUrl: ref.watch(serverTunnelUrlProvider),
         isGraphQl: true,
         isWebsocket: true,
       ),

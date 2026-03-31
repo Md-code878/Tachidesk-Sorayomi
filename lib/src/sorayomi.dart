@@ -12,6 +12,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'features/settings/presentation/appearance/widgets/app_theme_selector/app_theme_selector.dart';
 import 'features/settings/presentation/appearance/widgets/is_true_black/is_true_black_tile.dart';
+import 'features/security/presentation/app_lock_screen.dart';
 import 'features/settings/widgets/app_theme_mode_tile/app_theme_mode_tile.dart';
 import 'global_providers/global_providers.dart';
 import 'l10n/generated/app_localizations.dart';
@@ -32,7 +33,9 @@ class Sorayomi extends ConsumerWidget {
     return GraphQLProvider(
       client: client,
       child: MaterialApp.router(
-        builder: FToastBuilder(),
+        builder: (context, child) {
+          return FToastBuilder()(context, AppLockScreen(child: child!));
+        },
         onGenerateTitle: (context) => context.l10n.appTitle,
         debugShowCheckedModeBanner: false,
         theme: FlexThemeData.light(
