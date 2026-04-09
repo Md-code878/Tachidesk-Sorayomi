@@ -4,6 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +13,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../constants/app_sizes.dart';
 import '../constants/endpoints.dart';
@@ -22,6 +25,7 @@ import '../features/settings/presentation/server/widget/client/server_url_tile/s
 import '../features/settings/presentation/server/widget/credential_popup/credentials_popup.dart';
 import '../global_providers/global_providers.dart';
 import '../utils/extensions/custom_extensions.dart';
+import '../utils/logger/logger.dart';
 import '../utils/misc/app_utils.dart';
 import 'custom_circular_progress_indicator.dart';
 
@@ -35,6 +39,9 @@ class ServerImage extends HookConsumerWidget {
     this.progressIndicatorBuilder,
     this.wrapper,
     this.showReloadButton = false,
+    this.mangaId,
+    this.chapterId,
+    this.pageIndex,
   });
 
   final String imageUrl;
@@ -46,12 +53,53 @@ class ServerImage extends HookConsumerWidget {
   final Widget Function(Widget child)? wrapper;
   final bool showReloadButton;
 
+  // Optional parameters for checking local native downloads
+  final int? mangaId;
+  final int? chapterId;
+  final int? pageIndex;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final key = useState(UniqueKey());
+    final localFile = useState<File?>(null);
+    final isCheckingLocal = useState<bool>(true);
+
     // Providers
     final authType = ref.watch(authTypeKeyProvider);
     final basicToken = ref.watch(credentialsProvider);
+
+    useEffect(() {
+      Future<void> checkLocal() async {
+        if (imageUrl.startsWith('file://')) {
+          final potentialFile = File(imageUrl.replaceFirst('file://', ''));
+          if (await potentialFile.exists()) {
+             localFile.value = potentialFile;
+          } else {
+             logger.e('ServerImage expected local file missing: ${potentialFile.path}');
+          }
+        } else if (mangaId != null && chapterId != null && pageIndex != null) {
+          try {
+            final appDir = await getApplicationDocumentsDirectory();
+            final uri = Uri.parse(imageUrl);
+            final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
+            final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
+
+            // Note: fallback hardcoded to native_downloads since downloads was temporary.
+            // Better to rely on the file:// absolute url scheme from ReaderController now.
+            final potentialFile = File('${appDir.path}/native_downloads/$mangaId/$chapterId/$pageIndex.$validExt');
+            if (await potentialFile.exists()) {
+              localFile.value = potentialFile;
+            }
+          } catch (e) {
+            // Error checking local, fallback to network
+          }
+        }
+        isCheckingLocal.value = false;
+      }
+
+      checkLocal();
+      return null;
+    }, [imageUrl, mangaId, chapterId, pageIndex]);
 
     final baseApi = "${Endpoints.baseApi(
       baseUrl: ref.watch(serverUrlProvider),
@@ -119,6 +167,28 @@ class ServerImage extends HookConsumerWidget {
           ),
         );
       }
+    }
+
+    if (isCheckingLocal.value) {
+      return AppUtils.wrapOn(
+        wrapper,
+        progressIndicatorBuilder?.call(context, imageUrl, DownloadProgress(imageUrl, null, 0)) ??
+            const CenterSorayomiShimmerIndicator(),
+      );
+    }
+
+    if (localFile.value != null) {
+      return AppUtils.wrapOn(
+        wrapper,
+        Image.file(
+          localFile.value!,
+          key: key.value,
+          height: size?.height,
+          width: size?.width,
+          fit: fit ?? BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => errorWidget(context, error.toString(), stackTrace),
+        ),
+      );
     }
 
     return CachedNetworkImage(

@@ -21,11 +21,26 @@ part 'manga_details_controller.g.dart';
 @riverpod
 class MangaWithId extends _$MangaWithId {
   @override
-  Future<MangaDto?> build({required int mangaId}) =>
-      ref.watch(mangaBookRepositoryProvider).getManga(mangaId: mangaId);
+  Future<MangaDto?> build({required int mangaId}) async {
+    final result = await AsyncValue.guard(
+        () => ref.watch(mangaBookRepositoryProvider).getManga(mangaId: mangaId));
+
+    // If offline or error, we keep previous state if it exists
+    if (result.hasError && state.hasValue && state.value != null) {
+      return state.value;
+    }
+
+    return result.value;
+  }
 
   Future<void> refresh() async {
-    ref.invalidateSelf();
+    final result = await AsyncValue.guard(
+        () => ref.read(mangaBookRepositoryProvider).getManga(mangaId: mangaId));
+    if (result.hasError) {
+      state = result.copyWithPrevious(state);
+    } else {
+      state = result;
+    }
   }
 }
 
@@ -33,10 +48,15 @@ class MangaWithId extends _$MangaWithId {
 class MangaChapterList extends _$MangaChapterList {
   @override
   Future<List<ChapterDto>?> build({required int mangaId}) async {
-    final result =
-        await ref.watch(mangaBookRepositoryProvider).getChapterList(mangaId);
+    final result = await AsyncValue.guard(
+        () => ref.watch(mangaBookRepositoryProvider).getChapterList(mangaId));
     ref.keepAlive();
-    return result;
+
+    if (result.hasError && state.hasValue && state.value != null) {
+       return state.value;
+    }
+
+    return result.value;
   }
 
   Future<void> refresh([bool onlineFetch = false]) async {

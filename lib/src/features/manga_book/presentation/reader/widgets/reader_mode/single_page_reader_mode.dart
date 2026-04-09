@@ -138,6 +138,9 @@ class SinglePageReaderMode extends HookConsumerWidget {
             size: Size.fromHeight(context.height),
             appendApiToUrl: false,
             imageUrl: chapterPages.pages[index],
+            mangaId: manga.id,
+            chapterId: chapter.id,
+            pageIndex: index,
             progressIndicatorBuilder: (context, url, downloadProgress) =>
                 CenterSorayomiShimmerIndicator(
               value: downloadProgress.progress,

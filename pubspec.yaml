@@ -11,7 +11,9 @@ dependencies:
   built_collection: ^5.1.1
   cached_network_image: ^3.2.2
   cached_network_image_platform_interface: ^4.0.0
+  connectivity_plus: ^7.1.0
   cupertino_icons: ^1.0.5
+  dio: ^5.9.2
   extension_type_unions: ^1.0.10
   file_picker: ^8.0.0+1
   flex_color_scheme: ^8.4.0
@@ -45,7 +47,7 @@ dependencies:
   network_info_plus: ^6.0.0
   package_info_plus: ^8.0.0
   path: ^1.8.3
-  path_provider: ^2.0.11
+  path_provider: ^2.1.5
   permission_handler: ^11.0.0
   pub_semver: ^2.1.2
   queue: ^3.1.0+2
@@ -53,6 +55,7 @@ dependencies:
   scrollable_positioned_list: ^0.3.5
   shared_preferences: ^2.0.15
   shimmer: ^3.0.0
+  sqflite: ^2.4.2
   url_launcher: ^6.1.6
   web_socket_channel: ^3.0.0
 
