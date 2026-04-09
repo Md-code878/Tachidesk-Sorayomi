@@ -32,11 +32,12 @@ Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
   final dbChapter = await DownloadDatabase.instance.getChapter(chapterId);
 
   if (dbChapter != null && dbChapter['downloadStatus'] == 1) {
-    final mangaId = dbChapter['mangaId'] as int;
-
-
     final appDir = await getApplicationDocumentsDirectory();
-    final localPath = '${appDir.path}/downloads/$mangaId/$chapterId';
+    final localPathDb = dbChapter['local_path'] as String?;
+
+    // Fallback logic for legacy `downloads` path if local_path is null (for backward compatibility if needed)
+    final mangaId = dbChapter['mangaId'] as int;
+    final localPath = localPathDb != null ? '${appDir.path}/$localPathDb' : '${appDir.path}/downloads/$mangaId/$chapterId';
 
     logger.i('Loading chapter $chapterId from local storage path: $localPath');
 
@@ -57,8 +58,12 @@ Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
       });
 
       for (var file in files) {
-         // prepend file:// scheme so ServerImage handles it as an absolute URL and correctly parses the extension
-        localFilePaths.add('file://${file.path}');
+        if (file.existsSync()) {
+          // prepend file:// scheme so ServerImage handles it as an absolute URL and correctly parses the extension
+          localFilePaths.add('file://${file.path}');
+        } else {
+          logger.e('Missing local file: ${file.path}');
+        }
       }
 
       return Fragment$ChapterPagesDto(
@@ -68,6 +73,8 @@ Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
         ),
         pages: localFilePaths,
       );
+    } else {
+      logger.e('Expected local directory does not exist: $localPath');
     }
   }
 

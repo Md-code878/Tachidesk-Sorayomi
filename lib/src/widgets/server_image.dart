@@ -25,6 +25,7 @@ import '../features/settings/presentation/server/widget/client/server_url_tile/s
 import '../features/settings/presentation/server/widget/credential_popup/credentials_popup.dart';
 import '../global_providers/global_providers.dart';
 import '../utils/extensions/custom_extensions.dart';
+import '../utils/logger/logger.dart';
 import '../utils/misc/app_utils.dart';
 import 'custom_circular_progress_indicator.dart';
 
@@ -73,6 +74,8 @@ class ServerImage extends HookConsumerWidget {
           final potentialFile = File(imageUrl.replaceFirst('file://', ''));
           if (await potentialFile.exists()) {
              localFile.value = potentialFile;
+          } else {
+             logger.e('ServerImage expected local file missing: ${potentialFile.path}');
           }
         } else if (mangaId != null && chapterId != null && pageIndex != null) {
           try {
@@ -81,7 +84,9 @@ class ServerImage extends HookConsumerWidget {
             final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
             final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
 
-            final potentialFile = File('${appDir.path}/downloads/$mangaId/$chapterId/$pageIndex.$validExt');
+            // Note: fallback hardcoded to native_downloads since downloads was temporary.
+            // Better to rely on the file:// absolute url scheme from ReaderController now.
+            final potentialFile = File('${appDir.path}/native_downloads/$mangaId/$chapterId/$pageIndex.$validExt');
             if (await potentialFile.exists()) {
               localFile.value = potentialFile;
             }

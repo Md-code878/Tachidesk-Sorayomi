@@ -19,8 +19,9 @@ class DownloadDatabase {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _upgradeDB,
     );
   }
 
@@ -32,9 +33,16 @@ CREATE TABLE downloaded_chapters (
   chapterId INTEGER NOT NULL UNIQUE,
   chapterTitle TEXT NOT NULL,
   downloadStatus INTEGER NOT NULL,
-  pageCount INTEGER NOT NULL
+  pageCount INTEGER NOT NULL,
+  local_path TEXT
 )
 ''');
+  }
+
+  Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE downloaded_chapters ADD COLUMN local_path TEXT');
+    }
   }
 
   Future<int> insertChapter(Map<String, dynamic> chapter) async {
@@ -69,7 +77,7 @@ CREATE TABLE downloaded_chapters (
     final db = await instance.database;
     final maps = await db.query(
       'downloaded_chapters',
-      columns: ['mangaId', 'chapterId', 'chapterTitle', 'downloadStatus', 'pageCount'],
+      columns: ['mangaId', 'chapterId', 'chapterTitle', 'downloadStatus', 'pageCount', 'local_path'],
       where: 'chapterId = ?',
       whereArgs: [chapterId],
     );

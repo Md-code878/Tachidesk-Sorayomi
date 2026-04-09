@@ -34,20 +34,20 @@ class NativeDownloadService extends _$NativeDownloadService {
     ChapterDto chapter,
   ) async {
     final chapterId = chapter.id;
-    // Set initial progress
     state = {...state, chapterId: 0.0};
 
     try {
-      // 1. Mark as queued in DB
+      final relativePath = 'native_downloads/$mangaId/$chapterId';
+
       await DownloadDatabase.instance.insertChapter({
         'mangaId': mangaId,
         'chapterId': chapterId,
         'chapterTitle': chapter.name,
         'downloadStatus': 0, // 0 = downloading
         'pageCount': 0,
+        'local_path': relativePath,
       });
 
-      // 2. Fetch pages
       final repo = ref.read(mangaBookRepositoryProvider);
       final chapterPages = await repo.getChapterPages(chapterId: chapterId);
 
@@ -66,14 +66,12 @@ class NativeDownloadService extends _$NativeDownloadService {
         whereArgs: [chapterId],
       );
 
-      // 3. Prepare directory
       final appDir = await getApplicationDocumentsDirectory();
-      final chapterDir = Directory('${appDir.path}/downloads/$mangaId/$chapterId');
+      final chapterDir = Directory('${appDir.path}/$relativePath');
       if (!await chapterDir.exists()) {
         await chapterDir.create(recursive: true);
       }
 
-      // 4. Determine Auth
       final authType = ref.read(authTypeKeyProvider);
       final basicToken = ref.read(credentialsProvider);
 
@@ -81,7 +79,6 @@ class NativeDownloadService extends _$NativeDownloadService {
         _dio.options.headers["Authorization"] = basicToken;
       }
 
-      // 5. Download pages
       int downloadedPages = 0;
       for (int i = 0; i < pages.length; i++) {
         final url = pages[i];
@@ -110,7 +107,6 @@ class NativeDownloadService extends _$NativeDownloadService {
         state = {...state, chapterId: downloadedPages / pages.length};
       }
 
-      // 6. Mark as complete
       await DownloadDatabase.instance.updateChapterStatus(chapterId, 1); // 1 = downloaded
 
       final newState = {...state};
@@ -129,7 +125,7 @@ class NativeDownloadService extends _$NativeDownloadService {
 
   Future<void> deleteChapter(int mangaId, int chapterId) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final chapterDir = Directory('${appDir.path}/downloads/$mangaId/$chapterId');
+    final chapterDir = Directory('${appDir.path}/native_downloads/$mangaId/$chapterId');
     if (await chapterDir.exists()) {
       await chapterDir.delete(recursive: true);
     }
