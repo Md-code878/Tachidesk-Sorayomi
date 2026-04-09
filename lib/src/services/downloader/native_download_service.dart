@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -22,11 +23,25 @@ part 'native_download_service.g.dart';
 
 @riverpod
 class NativeDownloadService extends _$NativeDownloadService {
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(BaseOptions(
+    headers: {'Cache-Control': 'no-cache'}, // Disable caching to force raw fetch
+  ));
 
   @override
   Map<int, double> build() {
     return {};
+  }
+
+  void _verifyFileSize(String filePath) {
+    final file = File(filePath);
+    if (!file.existsSync()) {
+      throw Exception('ROM write failed: File does not exist at $filePath');
+    }
+    final size = file.statSync().size;
+    logger.i('Stat($filePath).size = $size');
+    if (size == 0) {
+      throw Exception('ROM write failed: File size is 0 bytes for $filePath');
+    }
   }
 
   Future<void> downloadChapter(
@@ -68,6 +83,8 @@ class NativeDownloadService extends _$NativeDownloadService {
 
       final appDir = await getApplicationDocumentsDirectory();
       final chapterDir = Directory('${appDir.path}/$relativePath');
+
+      // Explicitly force creation of the directory for ROM persistence
       if (!await chapterDir.exists()) {
         await chapterDir.create(recursive: true);
       }
@@ -80,30 +97,51 @@ class NativeDownloadService extends _$NativeDownloadService {
       }
 
       int downloadedPages = 0;
-      for (int i = 0; i < pages.length; i++) {
-        final url = pages[i];
-        final uri = Uri.parse(url);
-        final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
-        final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
 
-        final filePath = '${chapterDir.path}/$i.$validExt';
+      // Parallelize downloads in batches of 5 to optimize speed without overwhelming server
+      final int batchSize = 5;
+      for (int i = 0; i < pages.length; i += batchSize) {
+        final end = (i + batchSize < pages.length) ? i + batchSize : pages.length;
+        final batch = pages.sublist(i, end);
 
-        String fullUrl = url;
-        if (!url.startsWith('http')) {
-          final baseApi = Endpoints.baseApi(
-            baseUrl: ref.read(serverUrlProvider),
-            port: ref.read(serverPortProvider),
-            addPort: ref.read(serverPortToggleProvider).ifNull(),
-            isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
-            tunnelUrl: ref.read(serverTunnelUrlProvider),
-            appendApiToUrl: false,
-          );
-          fullUrl = "$baseApi$url";
-        }
+        final futures = batch.asMap().entries.map((entry) async {
+          final globalIndex = i + entry.key;
+          final url = entry.value;
+          final uri = Uri.parse(url);
+          final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
+          final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
 
-        await _dio.download(fullUrl, filePath);
+          final filePath = '${chapterDir.path}/$globalIndex.$validExt';
 
-        downloadedPages++;
+          // ROM Check: if already exists and size > 0, skip
+          final existingFile = File(filePath);
+          if (existingFile.existsSync() && existingFile.statSync().size > 0) {
+            return;
+          }
+
+          String fullUrl = url;
+          if (!url.startsWith('http')) {
+            final baseApi = Endpoints.baseApi(
+              baseUrl: ref.read(serverUrlProvider),
+              port: ref.read(serverPortProvider),
+              addPort: ref.read(serverPortToggleProvider).ifNull(),
+              isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
+              tunnelUrl: ref.read(serverTunnelUrlProvider),
+              appendApiToUrl: false,
+            );
+            fullUrl = "$baseApi$url";
+          }
+
+          // Direct I/O via Dio.download
+          await _dio.download(fullUrl, filePath);
+
+          // Verify ROM Write
+          _verifyFileSize(filePath);
+        });
+
+        await Future.wait(futures);
+
+        downloadedPages += batch.length;
         state = {...state, chapterId: downloadedPages / pages.length};
       }
 
