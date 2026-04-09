@@ -10,6 +10,8 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../constants/app_sizes.dart';
+import '../../../services/downloader/database.dart';
+import '../../../services/downloader/native_download_service.dart';
 import '../../../utils/extensions/custom_extensions.dart';
 import '../../../utils/misc/toast/toast.dart';
 import '../../../widgets/custom_circular_progress_indicator.dart';
@@ -39,46 +41,51 @@ class DownloadStatusIcon extends HookConsumerWidget {
       await updateData();
       setIsLoading(false);
     } catch (e) {
-      //
-    }
-  }
-
-  Future toggleChapterToQueue(
-    Toast? toast,
-    WidgetRef ref, {
-    bool isAdd = false,
-    bool isRemove = false,
-    bool isError = false,
-  }) async {
-    try {
-      (await AsyncValue.guard(() async {
-        final repo = ref.read(downloadsRepositoryProvider);
-        if (isRemove || isError) {
-          await repo.removeChapterFromDownloadQueue(chapter.id);
-        }
-        if (isAdd || isError) {
-          await repo.addChaptersBatchToDownloadQueue([chapter.id]);
-        }
-      }))
-          .showToastOnError(toast);
-    } catch (e) {
-      //
+      // Ignore
     }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isLoading = useState(false);
-
     final toast = ref.watch(toastProvider);
-    final downloadUpdate = ref.watch(downloadsFromIdProvider(chapter.id));
+
+    // Watch native downloader state
+    final nativeDownloads = ref.watch(nativeDownloadServiceProvider);
+    final nativeProgress = nativeDownloads[chapter.id];
+
+    // Check local database status
+    final localStatus = useState<int?>(null);
+
+    Future<void> checkLocalStatus() async {
+      final dbChapter = await DownloadDatabase.instance.getChapter(chapter.id);
+      if (dbChapter != null) {
+        localStatus.value = dbChapter['downloadStatus'] as int;
+      } else {
+        localStatus.value = null;
+      }
+    }
+
     useEffect(() {
-      if (downloadUpdate?.state == DownloadState.FINISHED) {
+      checkLocalStatus();
+      return null;
+    }, [nativeProgress]);
+
+    // Combined download state
+    final isDownloading = nativeProgress != null || localStatus.value == 0;
+    final isNativeDownloaded = localStatus.value == 1;
+    final isError = localStatus.value == -1;
+
+    // We still watch the server download update in case of background updates, but native takes precedence
+    final downloadUpdate = ref.watch(downloadsFromIdProvider(chapter.id));
+
+    useEffect(() {
+      if (downloadUpdate?.state == DownloadState.FINISHED || localStatus.value == 1) {
         Future.microtask(
             () => newUpdatePair(ref, (value) => isLoading.value = value));
       }
       return;
-    }, [downloadUpdate?.state]);
+    }, [downloadUpdate?.state, localStatus.value]);
 
     if (isLoading.value) {
       return Padding(
@@ -86,33 +93,74 @@ class DownloadStatusIcon extends HookConsumerWidget {
         child: MiniCircularProgressIndicator(color: context.iconColor),
       );
     } else {
-      if (downloadUpdate != null) {
+      if (isError) {
+        return IconButton(
+          onPressed: () {
+            ref.read(nativeDownloadServiceProvider.notifier).downloadChapter(mangaId, chapter);
+          },
+          icon: const Icon(Icons.replay_rounded),
+        );
+      } else if (isDownloading) {
+        return IconButton(
+          onPressed: () {
+            // Can't easily cancel yet, but we could add that functionality.
+            // For now, do nothing.
+          },
+          icon: MiniCircularProgressIndicator(
+            value: nativeProgress == 0.0 ? null : nativeProgress,
+            color: context.iconColor,
+          ),
+        );
+      } else if (downloadUpdate != null) {
+        // Fallback to server queue view if we are downloading remotely
         if (downloadUpdate.state == DownloadState.ERROR) {
           return IconButton(
-            onPressed: () => toggleChapterToQueue(toast, ref, isError: true),
+            onPressed: () async {
+              try {
+                (await AsyncValue.guard(() async {
+                  final repo = ref.read(downloadsRepositoryProvider);
+                  await repo.removeChapterFromDownloadQueue(chapter.id);
+                  await repo.addChaptersBatchToDownloadQueue([chapter.id]);
+                })).showToastOnError(toast);
+              } catch (e) {
+                // Ignore
+              }
+            },
             icon: const Icon(Icons.replay_rounded),
           );
         } else {
           return IconButton(
-            onPressed: () => toggleChapterToQueue(toast, ref, isRemove: true),
+            onPressed: () async {
+              try {
+                (await AsyncValue.guard(() async {
+                  final repo = ref.read(downloadsRepositoryProvider);
+                  await repo.removeChapterFromDownloadQueue(chapter.id);
+                })).showToastOnError(toast);
+              } catch (e) {
+                // Ignore
+              }
+            },
             icon: MiniCircularProgressIndicator(
-              value:
-                  downloadUpdate.progress == 0 ? null : downloadUpdate.progress,
+              value: downloadUpdate.progress == 0 ? null : downloadUpdate.progress,
               color: context.iconColor,
             ),
           );
         }
       } else {
-        if (isDownloaded) {
+        if (isDownloaded || isNativeDownloaded) {
           return IconButton(
             icon: const Icon(Icons.check_circle_rounded),
             onPressed: () async {
-              (await AsyncValue.guard(
-                () => ref
-                    .read(mangaBookRepositoryProvider)
-                    .deleteChapters([chapter.id]),
-              ))
-                  .showToastOnError(toast);
+              if (isNativeDownloaded) {
+                await ref.read(nativeDownloadServiceProvider.notifier).deleteChapter(mangaId, chapter.id);
+                localStatus.value = null;
+              } else {
+                (await AsyncValue.guard(
+                  () => ref
+                      .read(mangaBookRepositoryProvider)
+                      .deleteChapters([chapter.id]),
+                )).showToastOnError(toast);
+              }
               await newUpdatePair(ref, (value) => isLoading.value = value);
             },
           );
@@ -120,7 +168,9 @@ class DownloadStatusIcon extends HookConsumerWidget {
           return IconButton(
             icon: const Icon(Icons.download_for_offline_rounded),
             onPressed: () {
-              toggleChapterToQueue(toast, ref, isAdd: true);
+              // Initiate Native Download
+              ref.read(nativeDownloadServiceProvider.notifier).downloadChapter(mangaId, chapter);
+              checkLocalStatus();
             },
           );
         }
