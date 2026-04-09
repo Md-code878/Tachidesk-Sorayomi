@@ -69,7 +69,12 @@ class ServerImage extends HookConsumerWidget {
 
     useEffect(() {
       Future<void> checkLocal() async {
-        if (mangaId != null && chapterId != null && pageIndex != null) {
+        if (imageUrl.startsWith('file://')) {
+          final potentialFile = File(imageUrl.replaceFirst('file://', ''));
+          if (await potentialFile.exists()) {
+             localFile.value = potentialFile;
+          }
+        } else if (mangaId != null && chapterId != null && pageIndex != null) {
           try {
             final appDir = await getApplicationDocumentsDirectory();
             final uri = Uri.parse(imageUrl);
