@@ -97,4 +97,13 @@ CREATE TABLE downloaded_chapters (
     final db = await instance.database;
     return await db.query('downloaded_chapters');
   }
+
+  Future<List<Map<String, dynamic>>> getChaptersForManga(int mangaId) async {
+    final db = await instance.database;
+    return await db.query(
+      'downloaded_chapters',
+      where: 'mangaId = ?',
+      whereArgs: [mangaId],
+    );
+  }
 }
