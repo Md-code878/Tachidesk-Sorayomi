@@ -6,10 +6,7 @@
 
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:cached_network_image_platform_interface/cached_network_image_platform_interface.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:gap/gap.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -48,7 +45,7 @@ class ServerImage extends HookConsumerWidget {
   final Size? size;
   final BoxFit? fit;
   final bool appendApiToUrl;
-  final Widget Function(BuildContext, String, DownloadProgress)?
+  final Widget Function(BuildContext, String, dynamic)?
       progressIndicatorBuilder;
   final Widget Function(Widget child)? wrapper;
   final bool showReloadButton;
@@ -84,9 +81,9 @@ class ServerImage extends HookConsumerWidget {
             final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
             final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
 
-            // Note: fallback hardcoded to native_downloads since downloads was temporary.
+            // Note: fallback hardcoded to offline_manga since downloads was temporary.
             // Better to rely on the file:// absolute url scheme from ReaderController now.
-            final potentialFile = File('${appDir.path}/native_downloads/$mangaId/$chapterId/$pageIndex.$validExt');
+            final potentialFile = File('${appDir.path}/offline_manga/$mangaId/$chapterId/$pageIndex.$validExt');
             if (await potentialFile.exists()) {
               localFile.value = potentialFile;
             }
@@ -116,22 +113,7 @@ class ServerImage extends HookConsumerWidget {
             ? ({"Authorization": basicToken})
             : null;
 
-    final ImageRenderMethodForWeb renderMethod;
-    if (authType == AuthType.basic && basicToken != null) {
-      renderMethod = ImageRenderMethodForWeb.HttpGet;
-    } else {
-      renderMethod = ImageRenderMethodForWeb.HtmlImage;
-    }
-
-    finalProgressIndicatorBuilder(
-            BuildContext context, String url, DownloadProgress progress) =>
-        AppUtils.wrapOn(
-          wrapper,
-          progressIndicatorBuilder?.call(context, url, progress) ??
-              const CenterSorayomiShimmerIndicator(),
-        );
-
-    Widget errorWidget(BuildContext context, String error, stackTrace) {
+    Widget errorWidget(BuildContext context, Object error, StackTrace? stackTrace) {
       if (showReloadButton) {
         return AppUtils.wrapOn(
           wrapper,
@@ -172,12 +154,11 @@ class ServerImage extends HookConsumerWidget {
     if (isCheckingLocal.value) {
       return AppUtils.wrapOn(
         wrapper,
-        progressIndicatorBuilder?.call(context, imageUrl, DownloadProgress(imageUrl, null, 0)) ??
-            const CenterSorayomiShimmerIndicator(),
+        const CenterSorayomiShimmerIndicator(),
       );
     }
 
-    if (localFile.value != null) {
+    if (localFile.value != null && localFile.value!.existsSync()) {
       return AppUtils.wrapOn(
         wrapper,
         Image.file(
@@ -185,24 +166,31 @@ class ServerImage extends HookConsumerWidget {
           key: key.value,
           height: size?.height,
           width: size?.width,
-          fit: fit ?? BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => errorWidget(context, error.toString(), stackTrace),
+          fit: fit ?? BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => errorWidget(context, error, stackTrace),
+        ),
+      );
+    } else {
+      return AppUtils.wrapOn(
+        wrapper,
+        Image.network(
+          baseApi,
+          key: key.value,
+          headers: httpHeaders,
+          height: size?.height,
+          width: size?.width,
+          fit: fit ?? BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => errorWidget(context, error, stackTrace),
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            if (progressIndicatorBuilder != null) {
+               return progressIndicatorBuilder!.call(context, imageUrl, loadingProgress);
+            }
+            return const CenterSorayomiShimmerIndicator();
+          },
         ),
       );
     }
-
-    return CachedNetworkImage(
-      key: key.value,
-      imageUrl: baseApi,
-      height: size?.height,
-      cacheManager: DefaultCacheManager(),
-      httpHeaders: httpHeaders,
-      width: size?.width,
-      fit: fit ?? BoxFit.cover,
-      imageRenderMethodForWeb: renderMethod,
-      progressIndicatorBuilder: finalProgressIndicatorBuilder,
-      errorWidget: errorWidget,
-    );
   }
 }
 

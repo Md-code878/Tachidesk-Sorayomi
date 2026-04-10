@@ -141,10 +141,16 @@ class SinglePageReaderMode extends HookConsumerWidget {
             mangaId: manga.id,
             chapterId: chapter.id,
             pageIndex: index,
-            progressIndicatorBuilder: (context, url, downloadProgress) =>
-                CenterSorayomiShimmerIndicator(
-              value: downloadProgress.progress,
-            ),
+            progressIndicatorBuilder: (context, url, loadingProgress) {
+              if (loadingProgress is ImageChunkEvent) {
+                return CenterSorayomiShimmerIndicator(
+                  value: loadingProgress.expectedTotalBytes != null
+                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                      : null,
+                );
+              }
+              return const CenterSorayomiShimmerIndicator();
+            },
           );
           return AppUtils.wrapOn(
             !kIsWeb && (Platform.isAndroid || Platform.isIOS)

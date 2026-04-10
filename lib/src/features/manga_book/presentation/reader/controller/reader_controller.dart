@@ -35,9 +35,11 @@ Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
     final appDir = await getApplicationDocumentsDirectory();
     final localPathDb = dbChapter['local_path'] as String?;
 
-    // Fallback logic for legacy `downloads` path if local_path is null (for backward compatibility if needed)
+    // Fallback logic for legacy `downloads` and `native_downloads` paths if local_path is null (for backward compatibility if needed)
     final mangaId = dbChapter['mangaId'] as int;
-    final localPath = localPathDb != null ? '${appDir.path}/$localPathDb' : '${appDir.path}/downloads/$mangaId/$chapterId';
+    final localPath = localPathDb != null
+        ? '${appDir.path}/$localPathDb'
+        : '${appDir.path}/offline_manga/$mangaId/$chapterId';
 
     logger.i('Loading chapter $chapterId from local storage path: $localPath');
 
