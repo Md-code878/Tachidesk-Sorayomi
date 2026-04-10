@@ -52,7 +52,7 @@ class NativeDownloadService extends _$NativeDownloadService {
     state = {...state, chapterId: 0.0};
 
     try {
-      final relativePath = 'offline_manga/$mangaId/$chapterId';
+      final relativePath = 'MangaDownloads/$mangaId/$chapterId';
 
       await DownloadDatabase.instance.insertChapter({
         'mangaId': mangaId,
@@ -98,61 +98,57 @@ class NativeDownloadService extends _$NativeDownloadService {
 
       int downloadedPages = 0;
 
-      // Parallelize downloads in batches of 5 to optimize speed without overwhelming server
-      final int batchSize = 5;
-      for (int i = 0; i < pages.length; i += batchSize) {
-        final end = (i + batchSize < pages.length) ? i + batchSize : pages.length;
-        final batch = pages.sublist(i, end);
+      // Simple Basic Loop without complex batching/Future.wait (Kotatsu style)
+      for (int i = 0; i < pages.length; i++) {
+        final url = pages[i];
+        final uri = Uri.parse(url);
+        final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
+        final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
 
-        final futures = batch.asMap().entries.map((entry) async {
-          final globalIndex = i + entry.key;
-          final url = entry.value;
-          final uri = Uri.parse(url);
-          final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
-          final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
+        final filePath = '${chapterDir.path}/$i.$validExt';
 
-          final filePath = '${chapterDir.path}/$globalIndex.$validExt';
+        // ROM Check: if already exists and size > 0, skip
+        final existingFile = File(filePath);
+        if (existingFile.existsSync() && existingFile.statSync().size > 0) {
+          downloadedPages++;
+          state = {...state, chapterId: downloadedPages / pages.length};
+          continue;
+        }
 
-          // ROM Check: if already exists and size > 0, skip
-          final existingFile = File(filePath);
-          if (existingFile.existsSync() && existingFile.statSync().size > 0) {
-            return;
-          }
+        String fullUrl = url;
+        if (!url.startsWith('http')) {
+          final baseApi = Endpoints.baseApi(
+            baseUrl: ref.read(serverUrlProvider),
+            port: ref.read(serverPortProvider),
+            addPort: ref.read(serverPortToggleProvider).ifNull(),
+            isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
+            tunnelUrl: ref.read(serverTunnelUrlProvider),
+            appendApiToUrl: false,
+          );
+          fullUrl = "$baseApi$url";
+        }
 
-          String fullUrl = url;
-          if (!url.startsWith('http')) {
-            final baseApi = Endpoints.baseApi(
-              baseUrl: ref.read(serverUrlProvider),
-              port: ref.read(serverPortProvider),
-              addPort: ref.read(serverPortToggleProvider).ifNull(),
-              isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
-              tunnelUrl: ref.read(serverTunnelUrlProvider),
-              appendApiToUrl: false,
-            );
-            fullUrl = "$baseApi$url";
-          }
+        // Direct I/O via Dio.get and File.writeAsBytes with flush: true
+        try {
+          final response = await _dio.get(
+            fullUrl,
+            options: Options(responseType: ResponseType.bytes),
+            onReceiveProgress: (count, total) {
+               // Could update UI here for specific file if needed, but we do overall progress below
+            }
+          );
+          await File(filePath).writeAsBytes(response.data, flush: true);
+          print("SAVED TO ROM: $filePath");
+          logger.i('Downloaded image to absolute path: ${File(filePath).absolute.path}');
+        } catch (e) {
+          logger.e('Failed to download image to $filePath: $e');
+          rethrow;
+        }
 
-          // Direct I/O via Dio.get and File.writeAsBytes with flush: true
-          try {
-            final response = await _dio.get(
-              fullUrl,
-              options: Options(responseType: ResponseType.bytes),
-            );
-            await File(filePath).writeAsBytes(response.data, flush: true);
-            print("SAVED TO ROM: $filePath");
-            logger.i('Downloaded image to absolute path: ${File(filePath).absolute.path}');
-          } catch (e) {
-            logger.e('Failed to download image to $filePath: $e');
-            throw e;
-          }
+        // Verify ROM Write
+        _verifyFileSize(filePath);
 
-          // Verify ROM Write
-          _verifyFileSize(filePath);
-        });
-
-        await Future.wait(futures);
-
-        downloadedPages += batch.length;
+        downloadedPages++;
         state = {...state, chapterId: downloadedPages / pages.length};
       }
 
@@ -193,7 +189,7 @@ class NativeDownloadService extends _$NativeDownloadService {
 
   Future<void> deleteChapter(int mangaId, int chapterId) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final chapterDir = Directory('${appDir.path}/offline_manga/$mangaId/$chapterId');
+    final chapterDir = Directory('${appDir.path}/MangaDownloads/$mangaId/$chapterId');
     if (chapterDir.existsSync()) {
       chapterDir.deleteSync(recursive: true);
     }

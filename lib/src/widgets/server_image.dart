@@ -81,10 +81,10 @@ class ServerImage extends HookConsumerWidget {
             final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
             final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
 
-            // Note: fallback hardcoded to offline_manga since downloads was temporary.
+            // Note: fallback hardcoded to MangaDownloads since downloads was temporary.
             // Better to rely on the file:// absolute url scheme from ReaderController now.
-            final potentialFile = File('${appDir.path}/offline_manga/$mangaId/$chapterId/$pageIndex.$validExt');
-            if (await potentialFile.exists()) {
+            final potentialFile = File('${appDir.path}/MangaDownloads/$mangaId/$chapterId/$pageIndex.$validExt');
+            if (potentialFile.existsSync()) {
               localFile.value = potentialFile;
             }
           } catch (e) {
