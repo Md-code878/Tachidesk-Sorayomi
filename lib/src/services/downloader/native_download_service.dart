@@ -52,7 +52,7 @@ class NativeDownloadService extends _$NativeDownloadService {
     state = {...state, chapterId: 0.0};
 
     try {
-      final relativePath = 'native_downloads/$mangaId/$chapterId';
+      final relativePath = 'offline_manga/$mangaId/$chapterId';
 
       await DownloadDatabase.instance.insertChapter({
         'mangaId': mangaId,
@@ -85,8 +85,8 @@ class NativeDownloadService extends _$NativeDownloadService {
       final chapterDir = Directory('${appDir.path}/$relativePath');
 
       // Explicitly force creation of the directory for ROM persistence
-      if (!await chapterDir.exists()) {
-        await chapterDir.create(recursive: true);
+      if (!chapterDir.existsSync()) {
+        chapterDir.createSync(recursive: true);
       }
 
       final authType = ref.read(authTypeKeyProvider);
@@ -132,8 +132,19 @@ class NativeDownloadService extends _$NativeDownloadService {
             fullUrl = "$baseApi$url";
           }
 
-          // Direct I/O via Dio.download
-          await _dio.download(fullUrl, filePath);
+          // Direct I/O via Dio.get and File.writeAsBytes with flush: true
+          try {
+            final response = await _dio.get(
+              fullUrl,
+              options: Options(responseType: ResponseType.bytes),
+            );
+            await File(filePath).writeAsBytes(response.data, flush: true);
+            print("SAVED TO ROM: $filePath");
+            logger.i('Downloaded image to absolute path: ${File(filePath).absolute.path}');
+          } catch (e) {
+            logger.e('Failed to download image to $filePath: $e');
+            throw e;
+          }
 
           // Verify ROM Write
           _verifyFileSize(filePath);
@@ -145,7 +156,26 @@ class NativeDownloadService extends _$NativeDownloadService {
         state = {...state, chapterId: downloadedPages / pages.length};
       }
 
-      await DownloadDatabase.instance.updateChapterStatus(chapterId, 1); // 1 = downloaded
+      // Verify all files before marking as downloaded
+      bool allFilesExist = true;
+      for (int i = 0; i < pages.length; i++) {
+        final url = pages[i];
+        final uri = Uri.parse(url);
+        final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
+        final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
+        final filePath = '${chapterDir.path}/$i.$validExt';
+        if (!File(filePath).existsSync()) {
+          allFilesExist = false;
+          logger.e('File verification failed for $filePath');
+          break;
+        }
+      }
+
+      if (allFilesExist) {
+        await DownloadDatabase.instance.updateChapterStatus(chapterId, 1); // 1 = downloaded
+      } else {
+        throw Exception('Not all files were saved correctly.');
+      }
 
       final newState = {...state};
       newState.remove(chapterId);
@@ -163,9 +193,9 @@ class NativeDownloadService extends _$NativeDownloadService {
 
   Future<void> deleteChapter(int mangaId, int chapterId) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final chapterDir = Directory('${appDir.path}/native_downloads/$mangaId/$chapterId');
-    if (await chapterDir.exists()) {
-      await chapterDir.delete(recursive: true);
+    final chapterDir = Directory('${appDir.path}/offline_manga/$mangaId/$chapterId');
+    if (chapterDir.existsSync()) {
+      chapterDir.deleteSync(recursive: true);
     }
     await DownloadDatabase.instance.deleteChapter(chapterId);
   }
