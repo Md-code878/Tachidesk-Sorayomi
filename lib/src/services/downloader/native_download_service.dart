@@ -54,16 +54,19 @@ class NativeDownloadService extends _$NativeDownloadService {
     try {
       final relativePath = 'MangaDownloads/$mangaId/$chapterId';
 
+      final repo = ref.read(mangaBookRepositoryProvider);
+      final manga = await repo.getManga(mangaId: mangaId);
+
       await DownloadDatabase.instance.insertChapter({
         'mangaId': mangaId,
         'chapterId': chapterId,
         'chapterTitle': chapter.name,
+        'mangaTitle': manga?.title,
         'downloadStatus': 0, // 0 = downloading
         'pageCount': 0,
         'local_path': relativePath,
       });
 
-      final repo = ref.read(mangaBookRepositoryProvider);
       final chapterPages = await repo.getChapterPages(chapterId: chapterId);
 
       if (chapterPages == null || chapterPages.pages.isEmpty) {
@@ -82,7 +85,12 @@ class NativeDownloadService extends _$NativeDownloadService {
       );
 
       final appDir = await getApplicationDocumentsDirectory();
+      final mangaDir = Directory('${appDir.path}/MangaDownloads/$mangaId');
       final chapterDir = Directory('${appDir.path}/$relativePath');
+
+      if (!mangaDir.existsSync()) {
+        mangaDir.createSync(recursive: true);
+      }
 
       // Explicitly force creation of the directory for ROM persistence
       if (!chapterDir.existsSync()) {
@@ -94,6 +102,34 @@ class NativeDownloadService extends _$NativeDownloadService {
 
       if (authType == AuthType.basic && basicToken != null) {
         _dio.options.headers["Authorization"] = basicToken;
+      }
+
+      // Download Thumbnail if not present
+      if (manga != null && manga.thumbnailUrl != null) {
+        final coverPath = '${mangaDir.path}/cover.jpg';
+        if (!File(coverPath).existsSync()) {
+           try {
+             String fullCoverUrl = manga.thumbnailUrl!;
+             if (!fullCoverUrl.startsWith('http')) {
+                final baseApi = Endpoints.baseApi(
+                  baseUrl: ref.read(serverUrlProvider),
+                  port: ref.read(serverPortProvider),
+                  addPort: ref.read(serverPortToggleProvider).ifNull(),
+                  isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
+                  tunnelUrl: ref.read(serverTunnelUrlProvider),
+                  appendApiToUrl: false,
+                );
+                fullCoverUrl = "$baseApi$fullCoverUrl";
+             }
+             final coverResponse = await _dio.get(
+               fullCoverUrl,
+               options: Options(responseType: ResponseType.bytes),
+             );
+             await File(coverPath).writeAsBytes(coverResponse.data, flush: true);
+           } catch (e) {
+             logger.e('Failed to download cover for manga $mangaId: $e');
+           }
+        }
       }
 
       int downloadedPages = 0;
@@ -134,7 +170,11 @@ class NativeDownloadService extends _$NativeDownloadService {
             fullUrl,
             options: Options(responseType: ResponseType.bytes),
             onReceiveProgress: (count, total) {
-               // Could update UI here for specific file if needed, but we do overall progress below
+               if (total > 0) {
+                 final fileProgress = count / total;
+                 final totalProgress = (downloadedPages + fileProgress) / pages.length;
+                 state = {...state, chapterId: totalProgress};
+               }
             }
           );
           await File(filePath).writeAsBytes(response.data, flush: true);

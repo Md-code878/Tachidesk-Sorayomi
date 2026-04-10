@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../../../../utils/logger/logger.dart';
+import '../../../../../services/downloader/database.dart';
 import '../../../data/manga_book/manga_book_repository.dart';
 import '../../../domain/chapter/chapter_model.dart';
 import '../../../domain/chapter_page/chapter_page_model.dart';
@@ -27,12 +28,12 @@ FutureOr<ChapterDto?> chapter(
 
 @riverpod
 Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
-  // First get chapter metadata to know the mangaId
   final repo = ref.watch(mangaBookRepositoryProvider);
-  final chapterMetadata = await repo.getChapter(chapterId: chapterId);
+  // First check local DB for metadata to know the mangaId completely offline
+  final dbChapter = await DownloadDatabase.instance.getChapter(chapterId);
 
-  if (chapterMetadata != null) {
-    final mangaId = chapterMetadata.mangaId;
+  if (dbChapter != null && dbChapter['downloadStatus'] == 1) {
+    final mangaId = dbChapter['mangaId'] as int;
     final appDir = await getApplicationDocumentsDirectory();
     final localPath = '${appDir.path}/MangaDownloads/$mangaId/$chapterId';
 
