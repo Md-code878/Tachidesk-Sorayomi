@@ -10,8 +10,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../../../../services/downloader/database.dart';
 import '../../../../../utils/logger/logger.dart';
+import '../../../../../services/downloader/database.dart';
 import '../../../data/manga_book/manga_book_repository.dart';
 import '../../../domain/chapter/chapter_model.dart';
 import '../../../domain/chapter_page/chapter_page_model.dart';
@@ -28,24 +28,22 @@ FutureOr<ChapterDto?> chapter(
 
 @riverpod
 Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
-  // Check if chapter is downloaded locally
+  final repo = ref.watch(mangaBookRepositoryProvider);
+  // First check local DB for metadata to know the mangaId completely offline
   final dbChapter = await DownloadDatabase.instance.getChapter(chapterId);
 
   if (dbChapter != null && dbChapter['downloadStatus'] == 1) {
-    final appDir = await getApplicationDocumentsDirectory();
-    final localPathDb = dbChapter['local_path'] as String?;
-
-    // Fallback logic for legacy `downloads` path if local_path is null (for backward compatibility if needed)
     final mangaId = dbChapter['mangaId'] as int;
-    final localPath = localPathDb != null ? '${appDir.path}/$localPathDb' : '${appDir.path}/downloads/$mangaId/$chapterId';
+    final appDir = await getApplicationDocumentsDirectory();
+    final localPath = '${appDir.path}/MangaDownloads/$mangaId/$chapterId';
 
-    logger.i('Loading chapter $chapterId from local storage path: $localPath');
+    logger.i('Checking for offline chapter $chapterId in: $localPath');
 
     final dir = Directory(localPath);
-    if (await dir.exists()) {
+    if (dir.existsSync() && dir.listSync().isNotEmpty) {
       final List<String> localFilePaths = [];
 
-      // Load actual files from directory to get correct extensions
+      // Load actual files from directory
       final files = dir.listSync().whereType<File>().toList();
 
       // Sort files by name (0.jpg, 1.jpg, 2.jpg)
@@ -59,25 +57,24 @@ Future<ChapterPagesDto?> chapterPages(Ref ref, {required int chapterId}) async {
 
       for (var file in files) {
         if (file.existsSync()) {
-          // prepend file:// scheme so ServerImage handles it as an absolute URL and correctly parses the extension
+          // prepend file:// scheme so ServerImage handles it as an absolute URL
           localFilePaths.add('file://${file.path}');
-        } else {
-          logger.e('Missing local file: ${file.path}');
         }
       }
 
-      return Fragment$ChapterPagesDto(
-        chapter: Fragment$ChapterPagesDto$chapter(
-          id: chapterId,
-          pageCount: files.length, // use actual found files
-        ),
-        pages: localFilePaths,
-      );
-    } else {
-      logger.e('Expected local directory does not exist: $localPath');
+      if (localFilePaths.isNotEmpty) {
+        logger.i('Kotatsu Secret: Bypassing state manager and serving ${localFilePaths.length} pages directly from ROM.');
+        return Fragment$ChapterPagesDto(
+          chapter: Fragment$ChapterPagesDto$chapter(
+            id: chapterId,
+            pageCount: files.length, // use actual found files
+          ),
+          pages: localFilePaths,
+        );
+      }
     }
   }
 
-  // Fallback to server
-  return ref.watch(mangaBookRepositoryProvider).getChapterPages(chapterId: chapterId);
+  // Fallback to server if the folder doesn't exist or is empty
+  return repo.getChapterPages(chapterId: chapterId);
 }

@@ -13,8 +13,12 @@ import '../../../../../utils/extensions/custom_extensions.dart';
 import '../../../../../utils/mixin/shared_preferences_client_mixin.dart';
 import '../../../../library/domain/category/category_model.dart';
 import '../../../data/manga_book/manga_book_repository.dart';
+import '../../../../../services/downloader/database.dart';
 import '../../../domain/chapter/chapter_model.dart';
+import '../../../domain/chapter/graphql/__generated__/fragment.graphql.dart';
+import '../../../../../graphql/__generated__/schema.graphql.dart';
 import '../../../domain/manga/manga_model.dart';
+import '../../../domain/manga/graphql/__generated__/fragment.graphql.dart';
 
 part 'manga_details_controller.g.dart';
 
@@ -26,8 +30,35 @@ class MangaWithId extends _$MangaWithId {
         () => ref.watch(mangaBookRepositoryProvider).getManga(mangaId: mangaId));
 
     // If offline or error, we keep previous state if it exists
-    if (result.hasError && state.hasValue && state.value != null) {
-      return state.value;
+    if (result.hasError) {
+      if (state.hasValue && state.value != null) {
+        return state.value;
+      }
+      // If we don't have previous state but offline, check if we have it in DB to prevent crash
+      final localChapters = await DownloadDatabase.instance.getChaptersForManga(mangaId);
+      if (localChapters.isNotEmpty) {
+        final mangaTitle = localChapters.first['mangaTitle'] as String? ?? 'Unknown Manga';
+        return Fragment$MangaDto(
+          id: mangaId,
+          title: mangaTitle,
+          url: '',
+          artist: null,
+          author: null,
+          description: 'Offline Manga',
+          genre: [],
+          status: Enum$MangaStatus.$unknown,
+          thumbnailUrl: null,
+          updateStrategy: Enum$UpdateStrategy.$unknown,
+          initialized: true,
+          inLibrary: true,
+          meta: [],
+          realUrl: null,
+          downloadCount: localChapters.length,
+          inLibraryAt: '',
+          sourceId: '0',
+          unreadCount: 0,
+        );
+      }
     }
 
     return result.value;
@@ -52,11 +83,55 @@ class MangaChapterList extends _$MangaChapterList {
         () => ref.watch(mangaBookRepositoryProvider).getChapterList(mangaId));
     ref.keepAlive();
 
-    if (result.hasError && state.hasValue && state.value != null) {
-       return state.value;
+    final localDbChapters = await DownloadDatabase.instance.getChaptersForManga(mangaId);
+
+    if (result.hasError) {
+      if (state.hasValue && state.value != null) {
+         return state.value;
+      }
+
+      // Acid Test: If offline, fetch local chapters
+      if (localDbChapters.isNotEmpty) {
+        return localDbChapters.map((dbChap) {
+          return Fragment$ChapterDto(
+            id: dbChap['chapterId'] as int,
+            mangaId: mangaId,
+            name: dbChap['chapterTitle'] as String,
+            chapterNumber: 0.0,
+            fetchedAt: '0',
+            isBookmarked: false,
+            isDownloaded: true, // Force downloaded true
+            isRead: false,
+            lastPageRead: 0,
+            lastReadAt: '0',
+            pageCount: dbChap['pageCount'] as int,
+            sourceOrder: 0,
+            uploadDate: '0',
+            url: '',
+            meta: [],
+          );
+        }).toList();
+      }
+      return null;
     }
 
-    return result.value;
+    // Merge logic: If online, flag local chapters as downloaded
+    final serverChapters = result.value;
+    if (serverChapters != null && localDbChapters.isNotEmpty) {
+      final downloadedIds = localDbChapters
+          .where((chap) => chap['downloadStatus'] == 1)
+          .map((chap) => chap['chapterId'] as int)
+          .toSet();
+
+      return serverChapters.map((chapter) {
+        if (downloadedIds.contains(chapter.id)) {
+          return chapter.copyWith(isDownloaded: true);
+        }
+        return chapter;
+      }).toList();
+    }
+
+    return serverChapters;
   }
 
   Future<void> refresh([bool onlineFetch = false]) async {
@@ -66,7 +141,24 @@ class MangaChapterList extends _$MangaChapterList {
     if (result.hasError) {
       state = result.copyWithPrevious(state);
     } else {
-      state = result;
+      // Merge logic on refresh
+      final localDbChapters = await DownloadDatabase.instance.getChaptersForManga(mangaId);
+      final serverChapters = result.value;
+      if (serverChapters != null && localDbChapters.isNotEmpty) {
+        final downloadedIds = localDbChapters
+            .where((chap) => chap['downloadStatus'] == 1)
+            .map((chap) => chap['chapterId'] as int)
+            .toSet();
+
+        state = AsyncData(serverChapters.map((chapter) {
+          if (downloadedIds.contains(chapter.id)) {
+            return chapter.copyWith(isDownloaded: true);
+          }
+          return chapter;
+        }).toList());
+      } else {
+        state = result;
+      }
     }
   }
 

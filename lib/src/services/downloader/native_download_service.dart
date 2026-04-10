@@ -52,18 +52,21 @@ class NativeDownloadService extends _$NativeDownloadService {
     state = {...state, chapterId: 0.0};
 
     try {
-      final relativePath = 'native_downloads/$mangaId/$chapterId';
+      final relativePath = 'MangaDownloads/$mangaId/$chapterId';
+
+      final repo = ref.read(mangaBookRepositoryProvider);
+      final manga = await repo.getManga(mangaId: mangaId);
 
       await DownloadDatabase.instance.insertChapter({
         'mangaId': mangaId,
         'chapterId': chapterId,
         'chapterTitle': chapter.name,
+        'mangaTitle': manga?.title,
         'downloadStatus': 0, // 0 = downloading
         'pageCount': 0,
         'local_path': relativePath,
       });
 
-      final repo = ref.read(mangaBookRepositoryProvider);
       final chapterPages = await repo.getChapterPages(chapterId: chapterId);
 
       if (chapterPages == null || chapterPages.pages.isEmpty) {
@@ -82,11 +85,16 @@ class NativeDownloadService extends _$NativeDownloadService {
       );
 
       final appDir = await getApplicationDocumentsDirectory();
+      final mangaDir = Directory('${appDir.path}/MangaDownloads/$mangaId');
       final chapterDir = Directory('${appDir.path}/$relativePath');
 
+      if (!mangaDir.existsSync()) {
+        mangaDir.createSync(recursive: true);
+      }
+
       // Explicitly force creation of the directory for ROM persistence
-      if (!await chapterDir.exists()) {
-        await chapterDir.create(recursive: true);
+      if (!chapterDir.existsSync()) {
+        chapterDir.createSync(recursive: true);
       }
 
       final authType = ref.read(authTypeKeyProvider);
@@ -96,56 +104,114 @@ class NativeDownloadService extends _$NativeDownloadService {
         _dio.options.headers["Authorization"] = basicToken;
       }
 
+      // Download Thumbnail if not present
+      if (manga != null && manga.thumbnailUrl != null) {
+        final coverPath = '${mangaDir.path}/cover.jpg';
+        if (!File(coverPath).existsSync()) {
+           try {
+             String fullCoverUrl = manga.thumbnailUrl!;
+             if (!fullCoverUrl.startsWith('http')) {
+                final baseApi = Endpoints.baseApi(
+                  baseUrl: ref.read(serverUrlProvider),
+                  port: ref.read(serverPortProvider),
+                  addPort: ref.read(serverPortToggleProvider).ifNull(),
+                  isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
+                  tunnelUrl: ref.read(serverTunnelUrlProvider),
+                  appendApiToUrl: false,
+                );
+                fullCoverUrl = "$baseApi$fullCoverUrl";
+             }
+             final coverResponse = await _dio.get(
+               fullCoverUrl,
+               options: Options(responseType: ResponseType.bytes),
+             );
+             await File(coverPath).writeAsBytes(coverResponse.data, flush: true);
+           } catch (e) {
+             logger.e('Failed to download cover for manga $mangaId: $e');
+           }
+        }
+      }
+
       int downloadedPages = 0;
 
-      // Parallelize downloads in batches of 5 to optimize speed without overwhelming server
-      final int batchSize = 5;
-      for (int i = 0; i < pages.length; i += batchSize) {
-        final end = (i + batchSize < pages.length) ? i + batchSize : pages.length;
-        final batch = pages.sublist(i, end);
+      // Simple Basic Loop without complex batching/Future.wait (Kotatsu style)
+      for (int i = 0; i < pages.length; i++) {
+        final url = pages[i];
+        final uri = Uri.parse(url);
+        final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
+        final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
 
-        final futures = batch.asMap().entries.map((entry) async {
-          final globalIndex = i + entry.key;
-          final url = entry.value;
-          final uri = Uri.parse(url);
-          final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
-          final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
+        final filePath = '${chapterDir.path}/$i.$validExt';
 
-          final filePath = '${chapterDir.path}/$globalIndex.$validExt';
+        // ROM Check: if already exists and size > 0, skip
+        final existingFile = File(filePath);
+        if (existingFile.existsSync() && existingFile.statSync().size > 0) {
+          downloadedPages++;
+          state = {...state, chapterId: downloadedPages / pages.length};
+          continue;
+        }
 
-          // ROM Check: if already exists and size > 0, skip
-          final existingFile = File(filePath);
-          if (existingFile.existsSync() && existingFile.statSync().size > 0) {
-            return;
-          }
+        String fullUrl = url;
+        if (!url.startsWith('http')) {
+          final baseApi = Endpoints.baseApi(
+            baseUrl: ref.read(serverUrlProvider),
+            port: ref.read(serverPortProvider),
+            addPort: ref.read(serverPortToggleProvider).ifNull(),
+            isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
+            tunnelUrl: ref.read(serverTunnelUrlProvider),
+            appendApiToUrl: false,
+          );
+          fullUrl = "$baseApi$url";
+        }
 
-          String fullUrl = url;
-          if (!url.startsWith('http')) {
-            final baseApi = Endpoints.baseApi(
-              baseUrl: ref.read(serverUrlProvider),
-              port: ref.read(serverPortProvider),
-              addPort: ref.read(serverPortToggleProvider).ifNull(),
-              isTunnel: ref.read(serverTunnelToggleProvider).ifNull(),
-              tunnelUrl: ref.read(serverTunnelUrlProvider),
-              appendApiToUrl: false,
-            );
-            fullUrl = "$baseApi$url";
-          }
+        // Direct I/O via Dio.get and File.writeAsBytes with flush: true
+        try {
+          final response = await _dio.get(
+            fullUrl,
+            options: Options(responseType: ResponseType.bytes),
+            onReceiveProgress: (count, total) {
+               if (total > 0) {
+                 final fileProgress = count / total;
+                 final totalProgress = (downloadedPages + fileProgress) / pages.length;
+                 state = {...state, chapterId: totalProgress};
+               }
+            }
+          );
+          await File(filePath).writeAsBytes(response.data, flush: true);
+          print("SAVED TO ROM: $filePath");
+          logger.i('Downloaded image to absolute path: ${File(filePath).absolute.path}');
+        } catch (e) {
+          logger.e('Failed to download image to $filePath: $e');
+          rethrow;
+        }
 
-          // Direct I/O via Dio.download
-          await _dio.download(fullUrl, filePath);
+        // Verify ROM Write
+        _verifyFileSize(filePath);
 
-          // Verify ROM Write
-          _verifyFileSize(filePath);
-        });
-
-        await Future.wait(futures);
-
-        downloadedPages += batch.length;
+        downloadedPages++;
         state = {...state, chapterId: downloadedPages / pages.length};
       }
 
-      await DownloadDatabase.instance.updateChapterStatus(chapterId, 1); // 1 = downloaded
+      // Verify all files before marking as downloaded
+      bool allFilesExist = true;
+      for (int i = 0; i < pages.length; i++) {
+        final url = pages[i];
+        final uri = Uri.parse(url);
+        final ext = uri.pathSegments.isNotEmpty ? uri.pathSegments.last.split('.').last : 'jpg';
+        final validExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].contains(ext.toLowerCase()) ? ext : 'jpg';
+        final filePath = '${chapterDir.path}/$i.$validExt';
+        if (!File(filePath).existsSync()) {
+          allFilesExist = false;
+          logger.e('File verification failed for $filePath');
+          break;
+        }
+      }
+
+      if (allFilesExist) {
+        await DownloadDatabase.instance.updateChapterStatus(chapterId, 1); // 1 = downloaded
+      } else {
+        throw Exception('Not all files were saved correctly.');
+      }
 
       final newState = {...state};
       newState.remove(chapterId);
@@ -163,9 +229,9 @@ class NativeDownloadService extends _$NativeDownloadService {
 
   Future<void> deleteChapter(int mangaId, int chapterId) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final chapterDir = Directory('${appDir.path}/native_downloads/$mangaId/$chapterId');
-    if (await chapterDir.exists()) {
-      await chapterDir.delete(recursive: true);
+    final chapterDir = Directory('${appDir.path}/MangaDownloads/$mangaId/$chapterId');
+    if (chapterDir.existsSync()) {
+      chapterDir.deleteSync(recursive: true);
     }
     await DownloadDatabase.instance.deleteChapter(chapterId);
   }

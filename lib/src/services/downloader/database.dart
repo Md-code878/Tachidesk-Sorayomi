@@ -19,7 +19,7 @@ class DownloadDatabase {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -32,6 +32,7 @@ CREATE TABLE downloaded_chapters (
   mangaId INTEGER NOT NULL,
   chapterId INTEGER NOT NULL UNIQUE,
   chapterTitle TEXT NOT NULL,
+  mangaTitle TEXT,
   downloadStatus INTEGER NOT NULL,
   pageCount INTEGER NOT NULL,
   local_path TEXT
@@ -42,6 +43,9 @@ CREATE TABLE downloaded_chapters (
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE downloaded_chapters ADD COLUMN local_path TEXT');
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE downloaded_chapters ADD COLUMN mangaTitle TEXT');
     }
   }
 
@@ -77,7 +81,7 @@ CREATE TABLE downloaded_chapters (
     final db = await instance.database;
     final maps = await db.query(
       'downloaded_chapters',
-      columns: ['mangaId', 'chapterId', 'chapterTitle', 'downloadStatus', 'pageCount', 'local_path'],
+      columns: ['mangaId', 'chapterId', 'chapterTitle', 'mangaTitle', 'downloadStatus', 'pageCount', 'local_path'],
       where: 'chapterId = ?',
       whereArgs: [chapterId],
     );
@@ -92,5 +96,14 @@ CREATE TABLE downloaded_chapters (
   Future<List<Map<String, dynamic>>> getAllChapters() async {
     final db = await instance.database;
     return await db.query('downloaded_chapters');
+  }
+
+  Future<List<Map<String, dynamic>>> getChaptersForManga(int mangaId) async {
+    final db = await instance.database;
+    return await db.query(
+      'downloaded_chapters',
+      where: 'mangaId = ?',
+      whereArgs: [mangaId],
+    );
   }
 }

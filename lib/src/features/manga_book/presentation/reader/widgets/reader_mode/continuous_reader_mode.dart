@@ -211,11 +211,20 @@ class ContinuousReaderMode extends HookConsumerWidget {
               mangaId: manga.id,
               chapterId: chapter.id,
               pageIndex: index,
-              progressIndicatorBuilder: (_, __, downloadProgress) => Center(
-                child: CircularProgressIndicator(
-                  value: downloadProgress.progress,
-                ),
-              ),
+              progressIndicatorBuilder: (_, __, loadingProgress) {
+                if (loadingProgress is ImageChunkEvent) {
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  );
+                }
+                return const Center(
+                  child: CircularProgressIndicator(),
+                );
+              },
               wrapper: (Widget child) => SizedBox(
                 height: scrollDirection == Axis.vertical
                     ? context.height * .7
